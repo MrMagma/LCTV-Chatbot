@@ -10,6 +10,8 @@ var Bot = (function() {
 	var submit = $('input[type="submit"]');
 	var myUser = $('.chat-heading div').text().replace('Chat: ', '');
 
+	var body = document.body;
+
 	$('.message', container).addClass('read');
 
 
@@ -56,7 +58,7 @@ var Bot = (function() {
 	}
 
 	internal.runCommand = function(cmd, sender) {
-		if (bot.enableCommands) {
+		if (Bot.enableCommands) {
 			var data = cmd.split(" ");
 
 			var command = data.shift();
@@ -188,7 +190,7 @@ var Bot = (function() {
 	        // Someone entered the room
 	        if (Bot.enableWelcome && text.indexOf(' joined the room.') !== -1) {
 	            var username = text.slice(0, text.indexOf(' joined the room.'));
-	            if (bot.welcome.constructor === Array) {
+	            if (Bot.welcome.constructor === Array) {
 	            	var messageIndex = Math.floor(Math.random() * Bot.welcome.length)
 					internal.sendMessage(Bot.welcome[welcomeIndex], {target: username});
 	            } else {
@@ -216,17 +218,26 @@ var Bot = (function() {
 	Bot.setCommand("help", function(command) {
 		if (Bot.enableHelp) {
 			var data = arguments[arguments.length - 1];
-			var message = "List of commands (Type /help <command> for a more information about a specific command): ";
+			var message = "";
 			if (command === undefined || commands[command] === undefined) {
+				message = "commands are: ";
 				for (var i in commands) {
 					message += i + ", ";
 				}
+				message += " (Type /help <command> for a more information about a specific command)";
 			} else {
 				message = command + ": " + commands[command].help;
 			}
 			sendMessage("{{SENDER}}: @{{TARGET}} " + message, {target: data.sender});
 		}
 	}, "Prints documentation for all commands");
+
+	Bot.importExtension = function(url) {
+		var script = document.createElement("script");
+		script.type = "text/javascript";
+		script.src = url;
+		body.appendChild(script);
+	}
 
 
 
