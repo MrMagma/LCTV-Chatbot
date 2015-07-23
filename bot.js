@@ -120,7 +120,7 @@ var Bot = (function() {
 
 	internal.update = function() {
 		internal.getMessages();
-
+		
 		while (internal.messageQueue.length > 0 && textarea.val() === "") {
 			var message = internal.messageQueue.shift();
 			internal.processMessage(message);
@@ -144,7 +144,6 @@ var Bot = (function() {
 
 		var data = funcStuff[1].split(/(?:, |,)/g);
 		data.push("with(this){" + funcStuff[2] + "}");
-		console.log(data);
 
 		commands[cmd] = {
 			callback: Function.apply({}, data).bind(commandUtil),
@@ -201,11 +200,17 @@ var Bot = (function() {
 	});
 
 	Bot.onMessage(function(msg) {
-		if (msg.length) {
+		//TypeError: msg[0].childNodes[1] is undefined
+		if (msg.length && msg[0].childNodes && msg[0].childNodes.length) {
 			var parsedMsg = {
 				sender: msg[0].childNodes[0].textContent,
 				body: msg[0].childNodes[1].textContent
 			};
+
+			//Bob has decided that it's wasted effort to even try to get a word in with Angus around
+			/*if (parsedMsg.body.indexOf("[Angus]") !== -1) {
+				sendMessage("Go away Angus! Stop spamming!");
+			}*/
 
 			if (parsedMsg.body[0] === "/") {
 				internal.runCommand(parsedMsg.body.substr(1), parsedMsg.sender);
@@ -233,10 +238,8 @@ var Bot = (function() {
 	}, "Prints documentation for all commands");
 
 	Bot.importExtension = function(url) {
-		var script = document.createElement("script");
-		script.type = "text/javascript";
-		script.src = url;
-		body.appendChild(script);
+		//TODO(Mr Magma): Extensions don't load, probably some LCTV security thing. See if this can be fixed
+		jQuery.getScript(url);
 	}
 
 
