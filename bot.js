@@ -4,11 +4,14 @@ Issues
 Bot messes up with colors
 Or not...
 */
+
 var Bot = (function() {
 	var container = $('.message-pane');
 	var textarea = $('#message-textarea');
 	var submit = $('input[type="submit"]');
-	var myUser = $('.chat-heading div').text().replace('Chat: ', '');
+	var inChat = $(".roster-pane");
+
+	clearInterval(window.update);
 
 	var body = document.body;
 
@@ -26,10 +29,19 @@ var Bot = (function() {
 	};
 
 	var commandUtil = {
-		commands: commands
+		commands: commands,
+		owner: $('.chat-heading div').text().replace('Chat: ', ''),
+		inChat: []
 	};
 
-	Object.defineProperty(commandUtil, commands, {
+	//@Future me: DO NOT UNCOMMENT THIS CODE! IT MAKES THE HELP COMMAND BREAK!
+	/*Object.defineProperty(commandUtil, "commands", {
+		set: function() {
+
+		}
+	});*/
+
+	Object.defineProperty(commandUtil, "owner", {
 		set: function() {
 
 		}
@@ -58,18 +70,22 @@ var Bot = (function() {
 	}
 
 	internal.runCommand = function(cmd, sender) {
-		if (Bot.enableCommands) {
-			var data = cmd.split(" ");
+		try {
+			if (Bot.enableCommands) {
+				var data = cmd.split(" ");
 
-			var command = data.shift();
-			data.push({
-				command: command, //Just in case a command has an identity crisis
-				sender: sender || internal.names[Math.floor(Math.random(internal.names.length))]
-			});
+				var command = data.shift();
+				data.push({
+					command: command, //Just in case a command has an identity crisis
+					sender: sender || internal.names[Math.floor(Math.random(internal.names.length))]
+				});
 
-			if (commands[command] !== undefined && commands[command].enabled) {
-				commands[command].callback.apply(commandUtil, data);
+				if (commands[command] !== undefined && commands[command].enabled) {
+					commands[command].callback.apply(commandUtil, data);
+				}
 			}
+		} catch (error) {
+			internal.sendMessage(error);
 		}
 	}
 
@@ -88,7 +104,7 @@ var Bot = (function() {
 		if (!cfg.sender) cfg.sender = Bot.name;
 		//TODO(Mr Magma): Make it so that initialColor is updated dynamically (low priority)
 		if (!internal.waitingMessages) {
-			initialColor = $('#colorPremiumInput').val()
+			initialColor = $('#colorPremiumInput').val();
 		}
 
 		msg = msg.toString();
@@ -118,15 +134,25 @@ var Bot = (function() {
 		});
 	}
 
+	internal.updateInChat = function() {
+		commandUtil.inChat = [];
+		inChat = $(".roster-pane .user");
+		inChat.each(function() {
+			var $this = $(this);
+			commandUtil.inChat.push($(".label", $this).text());
+		})
+	}
+
 	internal.update = function() {
 		internal.getMessages();
+		internal.updateInChat();
 		
 		while (internal.messageQueue.length > 0 && textarea.val() === "") {
 			var message = internal.messageQueue.shift();
 			internal.processMessage(message);
 		}
 
-		setTimeout(internal.update, 200);
+		//setTimeout(internal.update, 500);
 	}
 
 
@@ -146,7 +172,7 @@ var Bot = (function() {
 		data.push("with(this){" + funcStuff[2] + "}");
 
 		commands[cmd] = {
-			callback: Function.apply({}, data).bind(commandUtil),
+			callback: Function.apply({}, data),
 			help: help || "No documentation supplied",
 			enabled: true
 		};
@@ -182,6 +208,29 @@ var Bot = (function() {
 
 
 
+	function notify(msg) {
+		// Let's check if the browser supports notifications
+		if (!("Notification" in window)) {
+			return;
+		}
+
+		// Let's check whether notification permissions have alredy been granted
+		else if (Notification.permission === "granted") {
+			// If it's okay let's create a notification
+			var notification = new Notification(msg);
+		} else if (Notification.permission !== 'denied') {
+			Notification.requestPermission(function (permission) {
+			// If the user accepts, let's create a notification
+				if (permission === "granted") {
+					var notification = new Notification(msg);
+				}
+			});
+		}
+
+		// At last, if the user has denied notifications, and you 
+		// want to be respectful there is no need to bother them any more.
+	}
+
 	Bot.onMessage(function(msg) {
 		if (msg.hasClass("message-info")) {
 			var text = msg.text();
@@ -189,6 +238,7 @@ var Bot = (function() {
 	        // Someone entered the room
 	        if (Bot.enableWelcome && text.indexOf(' joined the room.') !== -1) {
 	            var username = text.slice(0, text.indexOf(' joined the room.'));
+	            notify(username + " has joined the stream!");
 	            if (Bot.welcome.constructor === Array) {
 	            	var messageIndex = Math.floor(Math.random() * Bot.welcome.length)
 					internal.sendMessage(Bot.welcome[welcomeIndex], {target: username});
@@ -206,16 +256,11 @@ var Bot = (function() {
 				sender: msg[0].childNodes[0].textContent,
 				body: msg[0].childNodes[1].textContent
 			};
-
-			//Bob has decided that it's wasted effort to even try to get a word in with Angus around
-			/*if (parsedMsg.body.indexOf("[Angus]") !== -1) {
-				sendMessage("Go away Angus! Stop spamming!");
-			}*/
-
+			console.log(this.owner);
 			if (parsedMsg.body[0] === "/") {
 				internal.runCommand(parsedMsg.body.substr(1), parsedMsg.sender);
-			} else {
-				//Possibly notify the user in some unobtrusive way that there's a new message
+			} else if(parsedMsg.body.indexOf("@" + this.owner) !== -1) {
+				notify(parsedMsg.sender + ": " + parsedMsg.body);
 			}
 		}
 	});
@@ -244,9 +289,81 @@ var Bot = (function() {
 
 
 
-	setTimeout(internal.update, 1);
+	window.update = setInterval(internal.update, 500);
 
 
 
 	return Bot;
 })();
+
+Bot.setCommand("shrug", function() {
+	var data = arguments[arguments.length - 1];
+	sendMessage("@{{TARGET}} says: ¯\\_(ツ)_/¯", {target: data.sender})
+}, "¯\\_(ツ)_/¯");
+
+
+
+Bot.setCommand("add", function(a, b) {
+	var data = arguments[arguments.length - 1];
+	sendMessage("{{SENDER}}: @{{TARGET}} " + a + " plus " + b + " equals " + (parseFloat(a) + parseFloat(b)), {target: data.sender});
+}, "Adds two numbers. Usage /add number1 number2");
+
+Bot.setCommand("subtract", function(a, b) {
+	var data = arguments[arguments.length - 1];
+	sendMessage("{{SENDER}}: @{{TARGET}} " + a + " minus " + b + " equals " + (parseFloat(a) - parseFloat(b)), {target: data.sender});
+}, "Subtracts one number from another. Usage /subtract number1 number2");
+
+Bot.setCommand("multiply", function(a, b) {
+	var data = arguments[arguments.length - 1];
+	sendMessage("{{SENDER}}: @{{TARGET}} " + a + " times " + b + " equals " + (parseFloat(a) * parseFloat(b)), {target: data.sender});
+}, "Find the product of two numbers. Usage /multiply number1 number2");
+
+Bot.setCommand("divide", function(a, b) {
+	var data = arguments[arguments.length - 1];
+	sendMessage("{{SENDER}}: @{{TARGET}} " + a + " over " + b + " equals " + (parseFloat(a) / parseFloat(b)), {target: data.sender});
+}, "Divides one number by another. Usage /divide number1 number2");
+
+Bot.setCommand("power", function(a, b) {
+	var data = arguments[arguments.length - 1];
+	sendMessage("{{SENDER}}: @{{TARGET}} " + a + " to the " + b + " equals " + Math.pow(parseFloat(a), parseFloat(b)), {target: data.sender});
+}, "Outputs a number raised to a power. Usage /power number power");
+
+Bot.setCommand("root", function(a, b) {
+	var data = arguments[arguments.length - 1];
+	var a = parseFloat(a);
+	var b = parseFloat(b);
+	var root = Math.pow(Math.E, Math.log(b) / a);
+	sendMessage("{{SENDER}}: @{{TARGET}} the " + a + " root of " + b + " equals " + root, {target: data.sender});
+}, "Gets the n root of a number. Usage /root number n");
+
+Bot.setCommand("log", function(a, b) {
+	var data = arguments[arguments.length - 1];
+	var a = parseFloat(a);
+	var b = parseFloat(b || "10");
+	sendMessage("{{SENDER}}: @{{TARGET}} the base " + b + " log of " + a + " equals " + (Math.log(a) / Math.log(b)), {target: data.sender});
+}, "Gets the logarithm of a number. Usage /log number base");
+
+Bot.setCommand("roster", function() {
+	sendMessage("There are " + inChat.length + " people in chat right now");
+}, "Gets the number of people in the chatroom currently. Usage /roster");
+
+Bot.setCommand("who", function() {
+	var data = arguments[arguments.length - 1];
+	var message = "@{{TARGET}}: Users in chat are, ";
+	for (var i = 0; i < inChat.length; i ++) {
+		var userAppend = "";
+		if (i === inChat.length - 1) {
+			userAppend += "and "
+		}
+		userAppend += inChat[i];
+		if (i < inChat.length - 1) {
+			userAppend += ", "
+		}
+		message += userAppend;
+	}
+	sendMessage(message, {target: data.sender});
+}, "Gets a list of the usernames of people currently in chat. Usage /who");
+
+
+
+
