@@ -6,6 +6,7 @@ Or not...
 */
 
 var Bot = (function() {
+	/* Self executing function so we can have pseudo namespacing */
 	var container = $('.message-pane');
 	var textarea = $('#message-textarea');
 	var submit = $('input[type="submit"]');
@@ -33,7 +34,7 @@ var Bot = (function() {
 
 	var commandUtil = {
 		commands: commands,
-		owner: window.location,
+		owner: /\w+(?=\/(?!\w))/ig.exec(window.location)[1] || "",
 		inChat: []
 	};
 
@@ -65,15 +66,19 @@ var Bot = (function() {
 
 
 	internal.processMessage = function(msg) {
-		console.log("Message received! \"" + msg + "\"");
+		/* This method processes messages once they are recieved and passes them to the onMessage event listeners*/
 
 		for (var i = 0; i < internal.onMessage.length; i ++) {
-			internal.onMessage[i](msg);
+			internal.onMessage[i].call(commandUtil, msg);
 		}
 	}
 
 	internal.runCommand = function(cmd, sender) {
+		/* This method checks to see if a command exists, and if so runs that command */
+		//Sometimes commands may have errors and the LCTV console is kind of full already so we catch said
+		//errors and send them as a message (very unobtrusive, I know)
 		try {
+			//Only run commands if they're enabled
 			if (Bot.enableCommands) {
 				var data = cmd.split(" ");
 
@@ -93,6 +98,7 @@ var Bot = (function() {
 	}
 
 	internal.resetColor = function() {
+		/* This method resets the color to it's original after the bot is done sending it's message */
 		if (!internal.waitingMessages) {
 			setTimeout(function() {
 				if (!internal.waitingMessages) {
@@ -103,6 +109,7 @@ var Bot = (function() {
 	}
 
 	internal.sendMessage = function(msg, cfg) {
+		/* This method turns sends a message after 2 seconds */
 		if (!cfg) cfg = {};
 		if (!cfg.sender) cfg.sender = Bot.name;
 		//TODO(Mr Magma): Make it so that initialColor is updated dynamically (low priority)
@@ -129,6 +136,7 @@ var Bot = (function() {
 	}
 
 	internal.getMessages = function() {
+		/* Finds all messages that we have not yet processed */
 		var newMessages = $('.message:not(.read)', container);
 		newMessages.each(function() {
 			var $this = $(this);
@@ -138,6 +146,7 @@ var Bot = (function() {
 	}
 
 	internal.updateInChat = function() {
+		/* Updates the list of people who are currently in chat */
 		commandUtil.inChat = [];
 		inChat = $(".roster-pane .user");
 		inChat.each(function() {
@@ -147,6 +156,7 @@ var Bot = (function() {
 	}
 
 	internal.update = function() {
+		/* Calls all of our updatey methods and processes unread messages */
 		internal.getMessages();
 		internal.updateInChat();
 		
@@ -161,12 +171,15 @@ var Bot = (function() {
 
 
 	commandUtil.sendMessage = function(msg, cfg) {
+		/* Basically a copy of internal.sendMessage for use withing commands without the "." 
+		   Wrapped so nobody messed with the internal version */
 		internal.sendMessage(msg, cfg);
 	}
 
 
 
 	Bot.setCommand = function(cmd, callback, help) {
+		/* Sets a new command (cmd) to execute task (callback) with the help string of (help) */
 		var funcRegex = /\((.+|)\)(?: |){([^]+)}/;
 		/* funcStuff[1] is the functions parameters, funcStuff[2] is the body */
 		var funcStuff = callback.toString().match(funcRegex);
@@ -182,32 +195,38 @@ var Bot = (function() {
 	}
 
 	Bot.disableCommand = function(cmd) {
+		/* Make it so that a command cannot be used */
 		if (commands[cmd] !== undefined) {
 			commands[cmd].enabled = false;
 		}
 	}
 
 	Bot.enableCommand = function(cmd) {
+		/* Undo the effects of Bot.disableCommand */
 		if (commands[cmd] !== undefined) {
 			commands[cmd].enabled = true;
 		}
 	}
 
 	Bot.runCommand = function(cmd, args) {
+		/* Debugging/command utility method to run a command without it being sent */
 		if (commands[cmd] !== undefined) {
 			commands[cmd].callback.apply(commandUtil, args);
 		}
 	}
 
 	Bot.testCommand = function(cmdString) {
+		/* Debugging method to test parsing a string into a command call */
 		internal.runCommand(cmdString);
 	}
 
 	Bot.onMessage = function(callback) {
+		/* Adds a function to be called when a message is received */
 		internal.onMessage.push(callback.bind(commandUtil));
 	}
 
 	Bot.inChat = function(user) {
+		/* Utility method to check if a specific user is currently in chat */
 		if (commandUtil.inChat.indexOf(user) !== -1) return true;
 		return false;
 	}
@@ -216,7 +235,9 @@ var Bot = (function() {
 
 
 
-	function notify(msg) {
+	function notify(head, msg) {
+		/* Method for desktop notifications (totally not straight off MDN) */
+		if (!msg.length) msg = "";
 		// Let's check if the browser supports notifications
 		if (!("Notification" in window)) {
 			return;
@@ -230,7 +251,9 @@ var Bot = (function() {
 			Notification.requestPermission(function (permission) {
 			// If the user accepts, let's create a notification
 				if (permission === "granted") {
-					var notification = new Notification(msg);
+					var notification = new Notification(head, {
+						body: msg
+					});
 				}
 			});
 		}
@@ -239,6 +262,7 @@ var Bot = (function() {
 		// want to be respectful there is no need to bother them any more.
 	}
 
+	//When someone joins the stream
 	Bot.onMessage(function(msg) {
 		if (msg.hasClass("message-info")) {
 			var text = msg.text();
@@ -246,7 +270,7 @@ var Bot = (function() {
 	        // Someone entered the room
 	        if (Bot.enableWelcome && text.indexOf(' joined the room.') !== -1) {
 	            var username = text.slice(0, text.indexOf(' joined the room.'));
-	            notify(username + " has joined the stream!");
+	            notify("New viewer!", username + " has joined the stream!");
 	            if (Bot.welcome.constructor === Array) {
 	            	var messageIndex = Math.floor(Math.random() * Bot.welcome.length)
 					internal.sendMessage(Bot.welcome[messageIndex], {target: username});
@@ -257,6 +281,7 @@ var Bot = (function() {
 		}
 	});
 
+	//When a command or normal message has been sent
 	Bot.onMessage(function(msg) {
 		//TypeError: msg[0].childNodes[1] is undefined
 		if (msg.length && msg[0].childNodes && msg[0].childNodes.length) {
@@ -264,11 +289,10 @@ var Bot = (function() {
 				sender: msg[0].childNodes[0].textContent,
 				body: msg[0].childNodes[1].textContent
 			};
-			console.log(this.owner);
 			if (parsedMsg.body[0] === "/") {
 				internal.runCommand(parsedMsg.body.substr(1), parsedMsg.sender);
-			} else if(!document.hasFocus()) {
-				notify(parsedMsg.sender + ": " + parsedMsg.body);
+			} else if(!document.hasFocus() /*&& parsedMsg.sender.toLowerCase() !== this.owner.toLowerCase()*/) {
+				notify("New message from " + parsedMsg.sender, parsedMsg.body);
 			}
 		}
 	});
@@ -393,61 +417,158 @@ Bot.setCommand("who", function() {
 var tttGames = {};
 
 var TicTacToe = function(cfg) {
+	/*
+	cfg is {
+		player1: string,
+		player2: string
+	}
+	*/
 	if (!(this instanceof TicTacToe)) return new TicTacToe(cfg);
-	//this.id = cfg.id;
+
+	this.player1 = cfg.player1;
+	this.player2 = cfg.player2;
+
+	this.playerIndex = {};
+	this.playerIndex[cfg.player1] = "X";
+	this.playerIndex[cfg.player2] = "O";
+
 	this.players = {
-		"X": cfg.player1,
-		"O": cfg.player2
-	};
+		X: {
+			name: cfg.player1,
+			moves: []
+		},
+		O: {
+			name: cfg.player2,
+			moves: []
+		}
+	}
+
 	this.board = [
-		["", "", ""],
-		["", "", ""],
-		["", "", ""]
+		["N", "N", "N"],
+		["N", "N", "N"],
+		["N", "N", "N"]
 	];
+	this.wins = [
+		[1, 4, 7],
+		[2, 5, 8],
+		[3, 6, 9],
+		[1, 2, 3],
+		[4, 5, 6],
+		[7, 8, 9],
+		[1, 5, 9],
+		[3, 5, 7]
+	];
+
+	this.turns = ["X", null, "O"]
+	this.turn = -1;
+
+	this.winner = "N";
+	/*
+	[1, 2, 3]
+	[4, 5, 6]
+	[7, 8, 9]
+	X+Y*3+1
+	*/
 }
 
 TicTacToe.prototype = {
 	tryMove: function(player, x, y) {
-		if (x > 0 && y > 0 && x < this.board.length && y < this.board.length && this.board[x][y] === "" && player in this.players) {
+		/*
+		player is string
+		x should be number but check before using
+		y should be number but check before using
+		*/
+		var playerName = player;
+		player = this.playerIndex[player];
+		if (player !== this.turns[1 + this.turn]) {
+			Bot.sendMessage("@{{TARGET}}: It's not your turn yet!", {
+				target: this.players[player].name
+			})
+			return;
+		}
+		if (x.constructor !== Number || y.constructor !== Number) return;
+		if (x >= 0 && y >= 0 && x < this.board.length && y < this.board[x].length) {
+			if (this.board[x][y] !== "N") {
+				Bot.sendMessage("@{{PLAYER}}: Please pick a valid move.", {
+					player: playerName
+				});
+				return;
+			}
+			//this.players[this.turns[(1 + this.turn)]]
 			this.board[x][y] = player;
-			this.checkEnd();
+			this.players[player].moves.push(x + y * 3 + 1);
+			var playerWon = this.checkWin(player);
+			this.turn = -this.turn;
+			if (playerWon) {
+				Bot.sendMessage("@{{WINNER}} has won the game of Tic Tac Toe as {{SIDE}} against @{{LOSER}}!", {
+					winner: this.players[player].name,
+					loser: this.players[this.turns[1 + this.turn]].name,
+					side: player
+				})
+				this.winner = player;
+			} else {
+				Bot.sendMessage("@{{TARGET}}: @{{MOVER}} has moved! It's your turn now!", {
+					target: this.players[this.turns[1 + this.turn]].name,
+					mover: this.players[player].name
+				})
+			}
 		}
 	},
-	checkEnd: function() {
+	checkWin: function(side) {
+		/*
+		internal method
+		side is either "X" or "O"
+		used to check if the specified side has won the game
+		*/
+		if (this.players[side] !== undefined) {
+			if (this.players[side].moves.length < 3) {
+				return false;
+			}
 
+			var moves = this.players[side].moves;
+			for (var i = 0; i < this.wins.length; i ++) {
+				var win = this.wins[i];
+				for (var n = 0; n < win.length; n ++) {
+					if (moves.indexOf(win[n]) === -1) {
+						break;
+					}
+					if (n === win.length - 1) {
+						return true;
+					}
+				}
+			}
+		}
+	},
+	sendBoard: function() {
+		var board = this.board;
+		var message = "@{{PLAYER1}} VS @{{PLAYER2}} in Tic Tac Toe";
+		for (var x = 0; x < board.length; x ++) {
+			message += " \n"
+			for (var y = 0; y < board[x].length; y ++) {
+				message += board[x][y];
+				if (y < board[x].length - 1) {
+					message += " | "
+				}
+			}
+			message += " \n"
+			if (x < board.length - 1) {
+				message += "---+---+---";
+			}
+		}
+		Bot.sendMessage(message, {
+			player1: this.player1,
+			player2: this.player2
+		})
 	}
 };
 
 
 
 var challenges = {};
-/*
-{
-	userName: {
-		challenger: {
-			game: game,
-			from: userName
-		}
-	}
-}
-*/
-
-/*Bot.setCommand("game", function(game, opponent) {
-	var data = arguments[arguments.length - 1];
-	if (data === opponent || data === game) {
-		return;
-	}
-	/* TODO(Mr Magma): Make this better eventually when there are more games with an object of games 
-	if (game === "TTT") {
-		challenges[opponent] = {
-			game: game,
-			challenger: opponent
-		};
-	}
-});*/
 
 function sendChallenge(challengee, game, data) {
-	if (Bot.inChat(challengee)) {
+	/* TODO(MrMagma): Clean up this absolutely ugly method */
+	if (Bot.inChat(challengee)) { 
 		if (challenges[challengee] !== undefined && !(data.sender in challenges[challengee])) {
 			challenges[challengee][data.sender] = {
 				from: data.sender,
@@ -466,7 +587,7 @@ function sendChallenge(challengee, game, data) {
 			})
 			return;
 		}
-		Bot.sendMessage("@{{PLAYER1}} has challenged @{{PLAYER2}} to a game of Tic Tac Toe! ", {
+		Bot.sendMessage("@{{PLAYER1}} has challenged @{{PLAYER2}} to a game of Tic Tac Toe!", {
 			player1: data.sender,
 			player2: challengee
 		});
@@ -490,15 +611,30 @@ function declineChallenge(challenger, data) {
 
 function acceptChallenge(challenger, data) {
 	var challengee = challenges[data.sender];
+	if (!Bot.inChat(challenger)) {
+		Bot.sendMessage("@{{SENDER}}: That challenger has left the chat!", {
+			sender: data.sender
+		});
+		delete challenges[data.sender][challenger];
+		return;
+	}
+	if (tttGames[data.sender] !== undefined) {
+		sendMessage("@{{SENDER}}: You are not allowed to accept challenges while you are playing a game. Please finish the game first, and then accept @{{CHALLENGER}}'s challenge.", {
+			sender: data.sender,
+			challenger: challenger
+		})
+	}
 	if (challengee[challenger] !== undefined) {
 		var challenge = challengee[challenger].game;
-		if (challenge === "ttt") {
-			tttGames[challenger] = new TicTacToe({
+		if (challenge === "TTT") {
+			var game = new TicTacToe({
 				player1: challenger,
 				player2: data.sender
 			});
+			tttGames[challenger] = game;
+			tttGames[data.sender] = game;
 			delete challengee[challenger];
-			Bot.sendMessage("@{{PLAYER1}} has accepted @{{PLAYER2}}'s challenge to a game of Tic Tac Toe!", {
+			Bot.sendMessage("@{{PLAYER2}} has accepted @{{PLAYER1}}'s challenge to a game of Tic Tac Toe!", {
 				player1: challenger,
 				player2: data.sender
 			})
@@ -509,7 +645,7 @@ function acceptChallenge(challenger, data) {
 function listChallenges(data) {
 	//Tell the user all challenges that have been sent to them
 	if (challenges[data.sender] === undefined) {
-		sendMessage("@{{TARGET}}: You do not have any challenges currently.", {
+		Bot.sendMessage("@{{TARGET}}: You do not have any challenges currently.", {
 			target: data.sender
 		})
 	} else {
@@ -519,11 +655,11 @@ function listChallenges(data) {
 			challengers.push(i);
 		}
 		if (!challengers.length) {
-			sendMessage("@{{TARGET}}: You have challenges from " + challengers.join(", "), {
+			Bot.sendMessage("@{{TARGET}}: You do not have any challenges currently.", {
 				target: data.sender
 			})
 		} else {
-			sendMessage("@{{TARGET}}: You do not have any challenges currently.", {
+			Bot.sendMessage("@{{TARGET}}: You have challenges from " + challengers.join(", "), {
 				target: data.sender
 			})
 		}
@@ -532,8 +668,9 @@ function listChallenges(data) {
 
 Bot.setCommand("challenge", function() {
 	var data = arguments[arguments.length - 1];
+
 	if (arguments.length === 1) {
-		listChallenges(data.sender);
+		listChallenges(data);
 	} else if (arguments.length === 3) {
 		if (arguments[0] === "accept" && challenges[data.sender] !== undefined) {
 			acceptChallenge(arguments[1], data);
@@ -546,6 +683,51 @@ Bot.setCommand("challenge", function() {
 }, "Used to challenge other people to games, check your challenges, and accept and decline challenges. Usage /challenge to get your challenges, /challenge user game to challenge someone to a game, and /challenge <accept|decline> user to accept or decline challenges");
 
 Bot.setCommand("game", function() {
+	/*
+	move x y
+	view
+	resign
+	*/
 	var data = arguments[arguments.length - 1];
-});
+
+	if (!tttGames[data.sender]) return;
+	
+	var game = tttGames[data.sender];
+	
+	if (arguments.length > 2 && arguments[0] === "move") {
+		var x = parseFloat(arguments[1]);
+		var y = parseFloat(arguments[2]);
+		console.log("X:" + x + ", Y:" + y);
+		game.tryMove(data.sender, x, y);
+		if (game.winner !== "N") {
+			var player1 = game.player1;
+			var player2 = game.player2;
+			delete tttGames[player1];
+			delete tttGames[player2];
+		}
+		game.sendBoard();
+	} else if (arguments[0] === "view") {
+		game.sendBoard();
+	} else if (arguments[0] === "resign") {
+		var player1 = game.player1;
+		var player2 = game.player2;
+		sendMessage("@{{SENDER}} has resigned! @{{WINNER}} has won the game!", {
+			sender: data.sender,
+			winner: (data.sender === player1) ? player2 : player1
+		});
+		game.sendBoard();
+		delete tttGames[player1];
+		delete tttGames[player2];
+	}
+}, "Used to control the current game. Usage /game view, /game move x y, /game resign");
+
+
+
+Bot.setCommand("time", function() {
+
+	sendMessage("The time is {{TIME}} {{TIMEZONE}}", {
+		time: (new Date).getUTCHours() + ":" + (new Date).getMinutes(),
+		timeZone: "UTC"
+	});
+}, "Gets the current UTC time. Usage /time")
 
