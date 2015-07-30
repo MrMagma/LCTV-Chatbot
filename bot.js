@@ -322,7 +322,14 @@ var Bot = (function() {
 
 
 	window.update = setInterval(internal.update, 500);
-
+	$(Candy).on('candy:view.message.before-show', function(evt, args) {
+		for (var i in evt) {
+			console.log("evt: " + i);
+		}
+		for (var i in args) {
+			console.log("args: " + i);
+		}
+	});
 
 
 	return Bot;
